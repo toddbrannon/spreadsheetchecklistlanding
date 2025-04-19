@@ -42,6 +42,34 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
     }));
   };
 
+  const logError = async (error: any, context: any) => {
+    try {
+      const errorLog = {
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        stack: error.stack,
+        context,
+        userAgent: navigator.userAgent,
+        url: window.location.href
+      };
+
+      console.error('Form submission error:', errorLog);
+
+      // You could also send this to your own error logging endpoint
+      if (import.meta.env.PROD) {
+        await fetch(`${window.location.origin}/api/log-error`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(errorLog)
+        }).catch(e => console.error('Error logging failed:', e));
+      }
+    } catch (logError) {
+      console.error('Error logging failed:', logError);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -78,7 +106,8 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
         });
 
         if (!response.ok) {
-          throw new Error('Failed to submit form');
+          const errorText = await response.text().catch(() => 'No error message available');
+          throw new Error(`Failed to submit form: ${response.status} ${response.statusText}. ${errorText}`);
         }
 
         setFormData({ name: '', email: '' });
@@ -87,11 +116,22 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
         if (onSubmit) {
           onSubmit(formData);
         }
-      } catch (error) {
-        console.error('Submission error:', error);
+      } catch (error: any) {
+        const context = {
+          formData,
+          googleSheetsUrl: GOOGLE_SHEETS_URL,
+        };
+        
+        await logError(error, context);
+
+        let errorMessage = 'Sorry, there was an error submitting the form. Please try again.';
+        if (import.meta.env.DEV) {
+          errorMessage += ` Error: ${error.message}`;
+        }
+
         setErrors(prev => ({
           ...prev,
-          submission: 'Sorry, there was an error submitting the form. Please try again.'
+          submission: errorMessage
         }));
       } finally {
         setIsSubmitting(false);

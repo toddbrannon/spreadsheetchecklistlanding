@@ -42,67 +42,40 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
     }));
   };
 
-  const logError = async (error: any, context: any) => {
-    try {
-      const errorLog = {
-        timestamp: new Date().toISOString(),
-        error: error.message,
-        stack: error.stack,
-        context,
-        userAgent: navigator.userAgent,
-        url: window.location.href
-      };
-
-      console.error('Form submission error:', errorLog);
-
-      // You could also send this to your own error logging endpoint
-      if (import.meta.env.PROD) {
-        await fetch(`${window.location.origin}/api/log-error`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(errorLog)
-        }).catch(e => console.error('Error logging failed:', e));
-      }
-    } catch (logError) {
-      console.error('Error logging failed:', logError);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     setErrors((prev) => ({ ...prev, submission: '' }));
     setIsSuccess(false);
-    
+
     const newErrors = {
       name: formData.name ? '' : 'Name is required',
-      email: !formData.email 
-        ? 'Email is required' 
+      email: !formData.email
+        ? 'Email is required'
         : !validateEmail(formData.email)
         ? 'Please enter a valid email'
         : '',
       submission: '',
     };
-    
+
     setErrors(newErrors);
-    
+
     if (!newErrors.name && !newErrors.email) {
       setIsSubmitting(true);
 
       try {
+        const body = new URLSearchParams({
+          name: formData.name,
+          email: formData.email,
+          timestamp: new Date().toISOString(),
+          source: window.location.href
+        }).toString();
+
         const response = await fetch(GOOGLE_SHEETS_URL, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: JSON.stringify({
-            name: formData.name,
-            email: formData.email,
-            timestamp: new Date().toISOString(),
-            source: window.location.href
-          })
+          body,
         });
 
         if (!response.ok) {
@@ -112,26 +85,15 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
 
         setFormData({ name: '', email: '' });
         setIsSuccess(true);
-        
+
         if (onSubmit) {
           onSubmit(formData);
         }
       } catch (error: any) {
-        const context = {
-          formData,
-          googleSheetsUrl: GOOGLE_SHEETS_URL,
-        };
-        
-        await logError(error, context);
-
-        let errorMessage = 'Sorry, there was an error submitting the form. Please try again.';
-        if (import.meta.env.DEV) {
-          errorMessage += ` Error: ${error.message}`;
-        }
-
-        setErrors(prev => ({
+        console.error('Form submission error:', error);
+        setErrors((prev) => ({
           ...prev,
-          submission: errorMessage
+          submission: 'Sorry, there was an error submitting the form. Please try again.'
         }));
       } finally {
         setIsSubmitting(false);
@@ -143,10 +105,10 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
     <form onSubmit={handleSubmit} className={`space-y-4 ${className}`}>
       {isSuccess && (
         <div className="p-4 mb-4 text-sm text-green-700 bg-green-100 rounded-lg" role="alert">
-          Thank you! Your checklist is on its way to your inbox.
+          ✅ Thank you! Your checklist is on its way to your inbox.
         </div>
       )}
-      
+
       {errors.submission && (
         <div className="p-4 mb-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
           {errors.submission}
@@ -171,7 +133,7 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
         />
         {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
       </div>
-      
+
       <div>
         <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
           Email Address
@@ -190,7 +152,7 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
         />
         {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
       </div>
-      
+
       <button
         type="submit"
         disabled={isSubmitting}
@@ -198,7 +160,7 @@ const Form: React.FC<FormProps> = ({ buttonText, className = '', onSubmit }) => 
       >
         {isSubmitting ? 'Sending...' : buttonText}
       </button>
-      
+
       <p className="text-xs text-gray-500 text-center mt-2">
         We respect your privacy. Unsubscribe at any time.
       </p>
